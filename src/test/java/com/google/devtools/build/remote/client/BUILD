@@ -124,4 +124,5 @@ java_test(
         "@org_mockito_mockito_all//jar",
         "@remoteapis//build/bazel/remote/execution/v2:remote_execution_java_proto",
     ],
+    size="enormous",
 )

@@ -16,29 +16,15 @@ package com.google.devtools.build.remote.client;
 import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import build.bazel.remote.execution.v2.Digest;
-import build.bazel.remote.execution.v2.Directory;
-import build.bazel.remote.execution.v2.DirectoryNode;
-import build.bazel.remote.execution.v2.FileNode;
-import com.google.common.collect.ImmutableCollection;
-import com.google.common.collect.ImmutableList;
-import com.google.common.hash.Hashing;
-import com.google.devtools.build.remote.client.TreeNodeRepository.TreeNode;
-import com.google.devtools.build.remote.client.util.DigestUtil;
-import com.google.devtools.build.remote.client.util.Utils;
-import java.io.IOException;
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.stream.Collectors;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -46,6 +32,18 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+
+import com.google.common.collect.ImmutableCollection;
+import com.google.common.collect.ImmutableList;
+import com.google.common.hash.Hashing;
+import com.google.devtools.build.remote.client.TreeNodeRepository.TreeNode;
+import com.google.devtools.build.remote.client.util.DigestUtil;
+import com.google.devtools.build.remote.client.util.Utils;
+
+import build.bazel.remote.execution.v2.Digest;
+import build.bazel.remote.execution.v2.Directory;
+import build.bazel.remote.execution.v2.DirectoryNode;
+import build.bazel.remote.execution.v2.FileNode;
 
 /** Tests for {@link TreeNodeRepository}. */
 @RunWith(JUnit4.class)
@@ -99,7 +97,18 @@ public class TreeNodeRepositoryTest {
   private File createFile(String relativePath) throws IOException {
     return createFile(relativePath, "");
   }
-
+  
+  private String randomString(int size) { 
+      byte[] array = new byte[size];
+      new Random().nextBytes(array);
+      return new String(array, Charset.forName("UTF-8"));
+  }
+  
+  private File createRandomFile(String relativePath) throws IOException {
+	final int FILE_SIZE = 1024*10;  // 10 KB
+    return createFile(relativePath, randomString(FILE_SIZE));
+  }
+  
   @Test
   @SuppressWarnings("ReferenceEquality")
   public void testSubtreeReusage() throws Exception {
@@ -298,6 +307,28 @@ public class TreeNodeRepositoryTest {
             .addDirectories(DirectoryNode.newBuilder().setName("dir").setDigest(dirDigest))
             .build();
     assertThat(repo.treeToDirectories(root)).containsExactly(rootDir, dirNode, barDir);
+  }
+
+  @Test
+  public void testLargeInputTree() throws Exception {
+    final int numDirectories = 500;
+    final int numFiles = 100;
+    List<File> inputs = new ArrayList<File>(numDirectories*numFiles);
+      for (int d = 0; d < numDirectories; d++) {
+        for(int f = 0; f < numFiles; f++) {
+          inputs.add(createRandomFile(String.format("d-%d/f-%d.cc", d, f)));
+        }
+      }
+
+    TreeNodeRepository repo = createTestTreeNodeRepository();
+    TreeNode tree = repo.buildFromFiles(
+            inputs.stream().map(f -> execRoot.relativize(f.toPath()))
+            .collect(Collectors.toList()),
+            ImmutableList.of());
+
+//    Utils.vlog(1, 1, "largeInputTree test root: %s", tree.toDebugString());
+    assertThat(tree.getChildEntries()).hasSize(numDirectories);
+    repo.computeMerkleDigests(tree);
   }
 
   @Test
